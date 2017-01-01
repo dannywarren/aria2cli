@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 #############################################################################
-# Aria2::Shell
+# Aria2::Shell Class
 #############################################################################
 
 package Aria2::Shell; {
@@ -17,12 +17,26 @@ use Number::Bytes::Human qw| format_bytes |;
 
 use WebService::Aria2::RPC::JSON;
 
+
+#############################################################################
+# Init
+#############################################################################
+
+# Grab a copy of the aria2 webservice
+# NOTE: Need to read up on overriding Term::Shell's constructor so we can
+# store this in a more acceptable way
 my $aria2 = WebService::Aria2::RPC::JSON->new;
 
+# Fetch the current prompt string
 sub prompt_str{ "aria2> " }
 
-sub run_version
-{
+
+#############################################################################
+# Commands
+#############################################################################
+
+# Show the current version of the WebService::Aria2::RPC module
+sub run_version {
   my ( $self ) = @_;
 
   my $version = $aria2->get_version;
@@ -32,15 +46,15 @@ sub run_version
   return;
 }
 
-sub run_ls
-{
+
+# Show active and waiting downloads
+sub run_ls {
   my ( $self ) = @_;
 
   my $started = $aria2->get_active;
   my $paused = $aria2->get_waiting;
 
-  my @items =
-  (
+  my @items = (
     @{ $started || [] },
     @{ $paused  || [] },
   );
@@ -48,8 +62,9 @@ sub run_ls
   return $self->display_items( \@items );
 }
 
-sub run_started
-{
+
+# Show active downloads
+sub run_started {
   my ( $self, $gid ) = @_;
 
   my $items = $aria2->get_active({ gid => $gid });
@@ -59,8 +74,9 @@ sub run_started
   return $self->display_items( $items );
 }
 
-sub run_paused
-{
+
+# Show paused downloads
+sub run_paused {
   my ( $self, $gid ) = @_;
 
   my $items = $aria2->get_waiting({ gid => $gid });
@@ -70,8 +86,9 @@ sub run_paused
   return $self->display_items( $items );
 }
 
-sub run_stopped
-{
+
+# Show stopped downloads
+sub run_stopped {
   my ( $self, $gid ) = @_;
 
   my $items = $aria2->get_stopped({ gid => $gid });
@@ -81,8 +98,9 @@ sub run_stopped
   return $self->display_items( $items );
 }
 
-sub run_add
-{
+
+# Add to download queue
+sub run_add {
   my ( $self, @uris ) = @_;
 
   return if ! @uris;
@@ -97,17 +115,16 @@ sub run_add
   return;
 }
 
-sub run_pause
-{
+
+# Pause download
+sub run_pause {
   my ( $self, @gids ) = @_;
 
-  if ( ! @gids )
-  {
+  if ( ! @gids ) {
     $aria2->pause;
   }
 
-  GID: foreach my $gid ( @gids )
-  {
+  GID: foreach my $gid ( @gids ) {
     my $gid_ok = $aria2->pause({ gid => $gid });
     next URI if ! defined $gid_ok;
     printf "PAUSED: %s\n", $gid_ok;
@@ -116,17 +133,16 @@ sub run_pause
   return;
 }
 
-sub run_unpause
-{
+
+# Resume download
+sub run_unpause {
   my ( $self, @gids ) = @_;
 
-  if ( ! @gids )
-  {
+  if ( ! @gids ) {
     $aria2->unpause;
   }
 
-  GID: foreach my $gid ( @gids )
-  {
+  GID: foreach my $gid ( @gids ) {
     my $gid_ok = $aria2->unpause({ gid => $gid });
     next URI if ! defined $gid_ok;
     printf "UNPAUSED: %s\n", $gid_ok;
@@ -135,17 +151,16 @@ sub run_unpause
   return;
 }
 
-sub run_remove
-{
+
+# Remove download
+sub run_remove {
   my ( $self, @gids ) = @_;
 
-  if ( ! @gids )
-  {
+  if ( ! @gids ) {
     $aria2->remove;
   }
 
-  GID: foreach my $gid ( @gids )
-  {
+  GID: foreach my $gid ( @gids ) {
     my $gid_ok = $aria2->remove({ gid => $gid });
     next URI if ! defined $gid_ok;
     printf "STOPPED: %s\n", $gid_ok;
@@ -154,17 +169,16 @@ sub run_remove
   return;
 }
 
-sub run_purge
-{
+
+# Purge all completed downloads
+sub run_purge {
   my ( $self, @gids ) = @_;
 
-  if ( ! @gids )
-  {
+  if ( ! @gids ) {
     $aria2->purge;
   }
 
-  GID: foreach my $gid ( @gids )
-  {
+  GID: foreach my $gid ( @gids ) {
     my $gid_ok = $aria2->purge({ gid => $gid });
     next URI if ! defined $gid_ok;
     printf "PURGED: %s\n", $gid_ok;
@@ -173,8 +187,13 @@ sub run_purge
   return;
 }
 
-sub format_item
-{
+
+#############################################################################
+# Helpers
+#############################################################################
+
+# Helper for formatting a single list item
+sub format_item {
   my ( $self, $item ) = @_;
 
   my @row;
@@ -198,8 +217,7 @@ sub format_item
 
   # Format a human readable download speed value
   my $downspeed = '--';
-  if ( $item->{downloadSpeed} )
-  { 
+  if ( $item->{downloadSpeed} ) { 
     $downspeed = sprintf "%s/s", format_bytes( $item->{downloadSpeed} );
   }
 
@@ -213,8 +231,9 @@ sub format_item
   return \@row;
 }
 
-sub display_items
-{
+
+# Helper for displaying a list of items
+sub display_items {
   my ( $self, $items ) = @_;
 
   return if ! defined $items;
@@ -222,8 +241,7 @@ sub display_items
 
   my $table = Text::TabularDisplay->new(qw| GID FILE STATUS PROGRESS SPEED |);
 
-  ITEM: foreach my $item ( @{ $items } )
-  {
+  ITEM: foreach my $item ( @{ $items } ) {
     $table->add( $self->format_item($item) );
   }
 
@@ -233,24 +251,27 @@ sub display_items
   return;
 }
 
+
+#############################################################################
+# Autocomplete
+#############################################################################
+
+# Autocomplete helper for all known gids
 sub autocomplete_gid
 {
   my ( $self, $word, $line, $start ) = @_;
 
-  my @items =
-  (
+  my @items = (
     @{ $aria2->get_active || [] },
     @{ $aria2->get_waiting || [] },
     @{ $aria2->get_stopped || [] },
   );
 
   my @gids;
-  ITEM: foreach my $item ( @items )
-  {
+  ITEM: foreach my $item ( @items ) {
     my $gid = $item->{gid};
 
-    if ( defined $word )
-    {
+    if ( defined $word ) {
       next ITEM if $gid !~ /^$word/i;
     }
 
@@ -260,29 +281,13 @@ sub autocomplete_gid
   return @gids;
 }
 
-sub comp_remove
-{
-  my $self = shift;
-  return $self->autocomplete_gid( @_ );
-}
 
-sub comp_pause
-{
-  my $self = shift;
-  return $self->autocomplete_gid( @_ );
-}
+# Autocomplete helpers for all commands
+sub comp_remove   { my $self = shift; return $self->autocomplete_gid( @_ ); }
+sub comp_pause    { my $self = shift; return $self->autocomplete_gid( @_ ); }
+sub comp_unpause  { my $self = shift; return $self->autocomplete_gid( @_ ); }
+sub comp_ls       { my $self = shift; return $self->autocomplete_gid( @_ ); }
 
-sub comp_unpause
-{
-  my $self = shift;
-  return $self->autocomplete_gid( @_ );
-}
-
-sub comp_ls
-{
-  my $self = shift;
-  return $self->autocomplete_gid( @_ );
-}
 
 1; }
 
@@ -300,3 +305,4 @@ $shell->cmdloop;
 
 1; }
  
+
