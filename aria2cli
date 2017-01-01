@@ -14,6 +14,7 @@ use warnings;
 use Text::TabularDisplay;
 use File::Basename;
 use Number::Bytes::Human qw| format_bytes |;
+use Term::ANSIScreen;
 
 use WebService::Aria2::RPC::JSON;
 
@@ -26,6 +27,7 @@ use WebService::Aria2::RPC::JSON;
 # NOTE: Need to read up on overriding Term::Shell's constructor so we can
 # store this in a more acceptable way
 my $aria2 = WebService::Aria2::RPC::JSON->new;
+my $term  = Term::ANSIScreen->new;
 
 # Fetch the current prompt string
 sub prompt_str{ "aria2> " }
@@ -34,6 +36,21 @@ sub prompt_str{ "aria2> " }
 #############################################################################
 # Commands
 #############################################################################
+
+# Clear the screen
+sub run_clear {
+  my ( $self ) = @_;
+
+  # Visually clear the scren
+  $term->Cls;
+  $term->Cursor(0, 0);
+
+  # Destroy the command history too
+  $self->term->clear_history;
+
+  return;
+}
+
 
 # Show the current version of the WebService::Aria2::RPC module
 sub run_version {
