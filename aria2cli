@@ -1,0 +1,302 @@
+#!/usr/bin/env perl
+
+#############################################################################
+# Aria2::Shell
+#############################################################################
+
+package Aria2::Shell; {
+
+use base qw| Term::Shell |;
+
+use strict;
+use warnings;
+
+use Text::TabularDisplay;
+use File::Basename;
+use Number::Bytes::Human qw| format_bytes |;
+
+use WebService::Aria2::RPC::JSON;
+
+my $aria2 = WebService::Aria2::RPC::JSON->new;
+
+sub prompt_str{ "aria2> " }
+
+sub run_version
+{
+  my ( $self ) = @_;
+
+  my $version = $aria2->get_version;
+
+  printf "%s\n", $version || "unknown";
+
+  return;
+}
+
+sub run_ls
+{
+  my ( $self ) = @_;
+
+  my $started = $aria2->get_active;
+  my $paused = $aria2->get_waiting;
+
+  my @items =
+  (
+    @{ $started || [] },
+    @{ $paused  || [] },
+  );
+
+  return $self->display_items( \@items );
+}
+
+sub run_started
+{
+  my ( $self, $gid ) = @_;
+
+  my $items = $aria2->get_active({ gid => $gid });
+
+  return if ! defined $items;
+
+  return $self->display_items( $items );
+}
+
+sub run_paused
+{
+  my ( $self, $gid ) = @_;
+
+  my $items = $aria2->get_waiting({ gid => $gid });
+
+  return if ! defined $items;
+
+  return $self->display_items( $items );
+}
+
+sub run_stopped
+{
+  my ( $self, $gid ) = @_;
+
+  my $items = $aria2->get_stopped({ gid => $gid });
+
+  return if ! defined $items;
+
+  return $self->display_items( $items );
+}
+
+sub run_add
+{
+  my ( $self, @uris ) = @_;
+
+  return if ! @uris;
+
+  URI: foreach my $uri ( @uris )
+  {
+    my $gid = $aria2->add_uri({ uri => $uri });
+    next URI if ! defined $gid;
+    printf "ADDED: %s\n", $gid;
+  }
+
+  return;
+}
+
+sub run_pause
+{
+  my ( $self, @gids ) = @_;
+
+  if ( ! @gids )
+  {
+    $aria2->pause;
+  }
+
+  GID: foreach my $gid ( @gids )
+  {
+    my $gid_ok = $aria2->pause({ gid => $gid });
+    next URI if ! defined $gid_ok;
+    printf "PAUSED: %s\n", $gid_ok;
+  }
+
+  return;
+}
+
+sub run_unpause
+{
+  my ( $self, @gids ) = @_;
+
+  if ( ! @gids )
+  {
+    $aria2->unpause;
+  }
+
+  GID: foreach my $gid ( @gids )
+  {
+    my $gid_ok = $aria2->unpause({ gid => $gid });
+    next URI if ! defined $gid_ok;
+    printf "UNPAUSED: %s\n", $gid_ok;
+  }
+
+  return;
+}
+
+sub run_remove
+{
+  my ( $self, @gids ) = @_;
+
+  if ( ! @gids )
+  {
+    $aria2->remove;
+  }
+
+  GID: foreach my $gid ( @gids )
+  {
+    my $gid_ok = $aria2->remove({ gid => $gid });
+    next URI if ! defined $gid_ok;
+    printf "STOPPED: %s\n", $gid_ok;
+  }
+
+  return;
+}
+
+sub run_purge
+{
+  my ( $self, @gids ) = @_;
+
+  if ( ! @gids )
+  {
+    $aria2->purge;
+  }
+
+  GID: foreach my $gid ( @gids )
+  {
+    my $gid_ok = $aria2->purge({ gid => $gid });
+    next URI if ! defined $gid_ok;
+    printf "PURGED: %s\n", $gid_ok;
+  }
+
+  return;
+}
+
+sub format_item
+{
+  my ( $self, $item ) = @_;
+
+  my @row;
+
+  # Grab the base filename from the download location
+  my $filename = basename( $item->{files}[0]{path} );
+
+  # Format a human readable version of the complete and total bytes
+  my $filecomplete = defined $item->{completedLength} ? format_bytes( $item->{completedLength} ) : '--';
+  my $filesize     = defined $item->{totalLength}     ? format_bytes( $item->{totalLength} )     : '--';
+
+  # Calculate the percentage complete
+  my $filepercent = ( $item->{totalLength} ? $item->{completedLength} / $item->{totalLength} : 0 ) * 100;
+
+  # Create a progress string that shows file sizes and completion percent
+  my $progress = sprintf "%s/%s (\%02d%%)", 
+    $filecomplete, 
+    $filesize, 
+    $filepercent
+  ;
+
+  # Format a human readable download speed value
+  my $downspeed = '--';
+  if ( $item->{downloadSpeed} )
+  { 
+    $downspeed = sprintf "%s/s", format_bytes( $item->{downloadSpeed} );
+  }
+
+  # Add all the values we care about to the row
+  push @row, $item->{gid};
+  push @row, $filename;
+  push @row, $item->{status};
+  push @row, $progress;
+  push @row, $downspeed;
+
+  return \@row;
+}
+
+sub display_items
+{
+  my ( $self, $items ) = @_;
+
+  return if ! defined $items;
+  return if ! @{ $items };
+
+  my $table = Text::TabularDisplay->new(qw| GID FILE STATUS PROGRESS SPEED |);
+
+  ITEM: foreach my $item ( @{ $items } )
+  {
+    $table->add( $self->format_item($item) );
+  }
+
+  print $table->render;
+  print "\n";
+
+  return;
+}
+
+sub autocomplete_gid
+{
+  my ( $self, $word, $line, $start ) = @_;
+
+  my @items =
+  (
+    @{ $aria2->get_active || [] },
+    @{ $aria2->get_waiting || [] },
+    @{ $aria2->get_stopped || [] },
+  );
+
+  my @gids;
+  ITEM: foreach my $item ( @items )
+  {
+    my $gid = $item->{gid};
+
+    if ( defined $word )
+    {
+      next ITEM if $gid !~ /^$word/i;
+    }
+
+    push @gids, $gid;
+  }
+
+  return @gids;
+}
+
+sub comp_remove
+{
+  my $self = shift;
+  return $self->autocomplete_gid( @_ );
+}
+
+sub comp_pause
+{
+  my $self = shift;
+  return $self->autocomplete_gid( @_ );
+}
+
+sub comp_unpause
+{
+  my $self = shift;
+  return $self->autocomplete_gid( @_ );
+}
+
+sub comp_ls
+{
+  my $self = shift;
+  return $self->autocomplete_gid( @_ );
+}
+
+1; }
+
+
+#############################################################################
+# Main Class
+#############################################################################
+
+package main; {
+
+my $shell = Aria2::Shell->new();
+
+$shell->cmdloop;
+
+
+1; }
+ 
