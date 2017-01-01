@@ -11,11 +11,11 @@ use base qw| Term::Shell |;
 use strict;
 use warnings;
 
-use Text::TabularDisplay;
 use File::Basename;
 use Number::Bytes::Human qw| format_bytes |;
 use Term::ANSIScreen;
-
+use Term::ReadKey;
+use Text::TabularDisplay;
 use WebService::Aria2::RPC::JSON;
 
 
@@ -29,13 +29,46 @@ use WebService::Aria2::RPC::JSON;
 my $aria2 = WebService::Aria2::RPC::JSON->new;
 my $term  = Term::ANSIScreen->new;
 
+# Configuration variables
+# NOTE: These should also eventually go in whatever overridden constructor
+# we use
+my $prompt  = 'aria2> ';
+my $refresh = 1;
+
 # Fetch the current prompt string
-sub prompt_str{ "aria2> " }
+sub prompt_str{ $prompt; }
 
 
 #############################################################################
 # Commands
 #############################################################################
+
+# Watch active downloads
+sub run_watch {
+  my ( $self ) = @_;
+
+  # Loop until keypress 
+  my $last_refresh;
+  REFRESH: while ( ! defined ReadKey(-1) ) {
+    
+    # Skip this loop if we don't need to refresh the screen yet
+    next REFRESH if ( $last_refresh > 0 && time() - $last_refresh < $refresh );
+
+    $last_refresh = time();
+    
+    $term->Cls;
+    $term->Cursor(0, 0);
+
+    my $rows = $self->run_ls;
+
+    # If we ran out of items to watch, stop refreshing
+    last REFRESH if ( ! $rows );
+
+  }
+
+  return;
+}
+
 
 # Clear the screen
 sub run_clear {
@@ -258,14 +291,16 @@ sub display_items {
 
   my $table = Text::TabularDisplay->new(qw| GID FILE STATUS PROGRESS SPEED |);
 
+  my $count = 0;
   ITEM: foreach my $item ( @{ $items } ) {
     $table->add( $self->format_item($item) );
+    $count++;
   }
 
   print $table->render;
   print "\n";
 
-  return;
+  return $count;
 }
 
 
